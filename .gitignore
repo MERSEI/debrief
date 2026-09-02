@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+.env
+recordings/
+*.wav
+*.m4a
+
+.pytest_cache/
+.coverage
+.idea/
+.vscode/
