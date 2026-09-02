@@ -1,0 +1,43 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    # Тесты идут на Linux намеренно: ядро (слияние дорожек, ось времени,
+    # выбор устройства) не зависит от ОС, а PyAudioWPatch ставится только на
+    # Windows и в extras «capture» не входит в этот прогон. Так CI заодно
+    # проверяет, что импорты аудио-захвата остаются ленивыми.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Установка
+        run: pip install -e ".[dev]"
+
+      - name: Тесты
+        run: pytest -q
+
+      - name: CLI поднимается без звуковых устройств
+        run: |
+          python -c "
+          from debrief.cli import build_parser
+          args = build_parser().parse_args(['record', '-d', '30', '--hint', 'тест'])
+          assert args.duration == 30
+          from debrief.pipeline import EmptyTranscript
+          print('CLI и пайплайн импортируются без аудио-стека')
+          "
