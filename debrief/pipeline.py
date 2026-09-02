@@ -16,10 +16,15 @@ from .transcript import to_markdown as transcript_to_markdown
 log = logging.getLogger(__name__)
 
 
+class EmptyTranscript(RuntimeError):
+    """На дорожках не оказалось речи — разбирать нечего."""
+
+
 @dataclass
 class ProcessResult:
     segments: list[Segment]
-    summary: MeetingSummary
+    #: None, если разбор не состоялся — транскрипт при этом сохранён.
+    summary: MeetingSummary | None
     note_path: Path | None
 
 
@@ -47,9 +52,30 @@ def process(
         sum(1 for s in segments if s.speaker == THEM),
     )
 
-    summary = summarize(segments, hint=hint)
+    if not segments:
+        raise EmptyTranscript(
+            "На обеих дорожках не распознано ни одной реплики. "
+            "Проверьте вывод debrief devices и уровень записи."
+        )
 
-    summary_md = summary_to_markdown(summary, title=session_name)
+    # Разбор может не состояться: нет ключа, кончился лимит, отказ модели.
+    # Это не повод потерять получасовой созвон — транскрипт всё равно
+    # сохраняется, а разбор можно догнать позже через debrief process.
+    summary = None
+    summary_md = ""
+    try:
+        summary = summarize(segments, hint=hint)
+        summary_md = summary_to_markdown(summary, title=session_name)
+    except Exception as exc:
+        log.error("Разбор не удался (%s: %s). Сохраняю только транскрипт.",
+                  type(exc).__name__, exc)
+        summary_md = (
+            f"# {session_name}\n\n"
+            f"> Разбор не выполнен: {type(exc).__name__}: {exc}\n>\n"
+            "> Стенограмма ниже сохранена. Повторить разбор:\n"
+            f"> `debrief process \"{mic_path}\"`\n"
+        )
+
     note_path = None
     if config.vault_dir:
         from .sinks.obsidian import write_note
